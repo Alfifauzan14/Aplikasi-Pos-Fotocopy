@@ -1,0 +1,302 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ========================
+// USERS & AUTH
+// ========================
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  password      String
+  phone         String?
+  role          Role     @default(CUSTOMER)
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  orders       Order[]
+  notifications Notification[]
+  logAktivitas LogAktivitas[]
+
+  @@map("users")
+}
+
+enum Role {
+  CUSTOMER
+  ADMIN
+  MANAJER
+}
+
+// ========================
+// LAYANAN PRINT/FOTOCOPY
+// ========================
+model Layanan {
+  id          String      @id @default(cuid())
+  nama        String
+  jenis       JenisLayanan
+  ukuran      UkuranKertas
+  hargaPerLembar Decimal  @db.Decimal(10, 2)
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  orderDetailLayanan OrderDetailLayanan[]
+
+  @@map("layanan")
+}
+
+enum JenisLayanan {
+  PRINT_HITAM_PUTIH
+  PRINT_BERWARNA
+  FOTOCOPY
+}
+
+enum UkuranKertas {
+  A4
+  F4
+  A3
+}
+
+// ========================
+// PRODUK ATK
+// ========================
+model ProdukATK {
+  id          String   @id @default(cuid())
+  nama        String
+  deskripsi   String?  @db.Text
+  harga       Decimal  @db.Decimal(10, 2)
+  stok        Int      @default(0)
+  stokMinimum Int      @default(10)
+  satuan      String   @default("pcs")
+  gambar      String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  orderDetailATK OrderDetailATK[]
+
+  @@map("produk_atk")
+}
+
+// ========================
+// STOK BAHAN
+// ========================
+model StokBahan {
+  id          String    @id @default(cuid())
+  nama        String
+  jenis       JenisBahan
+  satuan      String
+  stokSaat    Int
+  stokMinimum Int
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  riwayatStok RiwayatStok[]
+
+  @@map("stok_bahan")
+}
+
+enum JenisBahan {
+  KERTAS_A4
+  KERTAS_F4
+  KERTAS_A3
+  TINTA
+  TONER
+}
+
+model RiwayatStok {
+  id          String    @id @default(cuid())
+  stokBahanId String
+  stokBahan   StokBahan @relation(fields: [stokBahanId], references: [id])
+  jenis       JenisRiwayatStok
+  jumlah      Int
+  stokSebelum Int
+  stokSesudah Int
+  keterangan  String?
+  createdAt   DateTime  @default(now())
+
+  @@map("riwayat_stok")
+}
+
+enum JenisRiwayatStok {
+  MASUK
+  KELUAR
+}
+
+// ========================
+// ORDERS
+// ========================
+model Order {
+  id            String      @id @default(cuid())
+  nomorOrder    String      @unique
+  customerId    String?
+  customer      User?       @relation(fields: [customerId], references: [id])
+  namaCustomer  String      // Untuk transaksi langsung tanpa akun
+  tipeOrder     TipeOrder
+  status        StatusOrder @default(MENUNGGU_PEMBAYARAN)
+  totalHarga    Decimal     @db.Decimal(10, 2)
+  metodeBayar   MetodeBayar
+  buktiBayar    String?     // URL bukti pembayaran
+  catatan       String?     @db.Text
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  antrian            Antrian?
+  orderDetailLayanan OrderDetailLayanan[]
+  orderDetailATK     OrderDetailATK[]
+  struk              Struk?
+
+  @@map("orders")
+}
+
+enum TipeOrder {
+  ONLINE
+  LANGSUNG
+}
+
+enum StatusOrder {
+  MENUNGGU_PEMBAYARAN
+  PEMBAYARAN_DIKONFIRMASI
+  SEDANG_DIPROSES
+  SIAP_DIAMBIL
+  SELESAI
+  DIBATALKAN
+}
+
+enum MetodeBayar {
+  CASH
+  QRIS
+}
+
+model OrderDetailLayanan {
+  id          String  @id @default(cuid())
+  orderId     String
+  order       Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  layananId   String
+  layanan     Layanan @relation(fields: [layananId], references: [id])
+  jumlahLembar Int
+  jumlahCopy  Int     @default(1)
+  hargaPerLembar Decimal @db.Decimal(10, 2)
+  subtotal    Decimal @db.Decimal(10, 2)
+  fileUrl     String? // URL file di Cloudinary
+  filePublicId String? // Public ID untuk delete dari Cloudinary
+  namaFile    String?
+  catatan     String?
+
+  @@map("order_detail_layanan")
+}
+
+model OrderDetailATK {
+  id        String    @id @default(cuid())
+  orderId   String
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  produkId  String
+  produk    ProdukATK @relation(fields: [produkId], references: [id])
+  jumlah    Int
+  harga     Decimal   @db.Decimal(10, 2)
+  subtotal  Decimal   @db.Decimal(10, 2)
+
+  @@map("order_detail_atk")
+}
+
+// ========================
+// ANTRIAN
+// ========================
+model Antrian {
+  id            String      @id @default(cuid())
+  orderId       String      @unique
+  order         Order       @relation(fields: [orderId], references: [id])
+  nomorAntrian  String      @unique
+  status        StatusAntrian @default(MENUNGGU)
+  estimasiSelesai DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@map("antrian")
+}
+
+enum StatusAntrian {
+  MENUNGGU
+  DIPROSES
+  SELESAI
+  DIBATALKAN
+}
+
+// ========================
+// STRUK / INVOICE
+// ========================
+model Struk {
+  id        String   @id @default(cuid())
+  orderId   String   @unique
+  order     Order    @relation(fields: [orderId], references: [id])
+  nomorStruk String  @unique
+  createdAt DateTime @default(now())
+
+  @@map("struk")
+}
+
+// ========================
+// LOG AKTIVITAS ADMIN
+// ========================
+model LogAktivitas {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  aksi        String
+  entitas     String   // Nama tabel/entity yang diubah
+  entitasId   String?
+  dataBefore  Json?    // Data sebelum perubahan
+  dataAfter   Json?    // Data setelah perubahan
+  keterangan  String?  @db.Text
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  @@map("log_aktivitas")
+}
+
+// ========================
+// NOTIFIKASI
+// ========================
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  judul     String
+  pesan     String   @db.Text
+  tipe      TipeNotifikasi
+  isRead    Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  @@map("notifications")
+}
+
+enum TipeNotifikasi {
+  STATUS_ORDER
+  KONFIRMASI_BAYAR
+  STOK_MENIPIS
+  SISTEM
+}
+
+// ========================
+// PENGATURAN
+// ========================
+model Pengaturan {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+
+  @@map("pengaturan")
+}
